@@ -1,0 +1,25 @@
+meta {
+  name: 9_post_internal_rate
+  type: http
+  seq: 9
+}
+
+post {
+  url: {{base-url}}/internal/v1/rates
+  body: json
+  auth: none
+}
+
+headers {
+  X-API-Key: test-api-key-123
+}
+
+body:json {
+  {
+    "event_id": "550e8400-e29b-41d4-a716-446655440003",
+    "provider_id": "whatsapp-provider",
+    "pair": "CAD_NGN",
+    "rate": 996.65,
+    "timestamp": "2026-05-19T08:00:00Z"
+  }
+}

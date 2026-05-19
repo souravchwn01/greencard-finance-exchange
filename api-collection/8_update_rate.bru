@@ -1,0 +1,22 @@
+meta {
+  name: 8_update_rate
+  type: http
+  seq: 8
+}
+
+put {
+  url: {{base-url}}/internal/v1/rates/NGN_CAD
+  body: json
+  auth: none
+}
+
+headers {
+  X-API-Key: test-api-key-123
+}
+
+body:json {
+  {
+    "rate": 0.0020,
+    "provider_id": "admin-manual"
+  }
+}

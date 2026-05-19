@@ -1,0 +1,17 @@
+meta {
+  name: Error - Unsupported Currency
+  type: http
+  seq: 5
+}
+
+get {
+  url: {{base-url}}/api/v1/exchange-rate?from=EUR&to=NGN&sender_country=Nigeria
+  body: none
+  auth: none
+}
+
+params:query {
+  from: EUR
+  to: NGN
+  sender_country: Nigeria
+}

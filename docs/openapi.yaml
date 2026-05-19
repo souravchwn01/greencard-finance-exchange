@@ -1,0 +1,307 @@
+openapi: '3.0.3'
+
+info:
+  title: GreenCard Exchange Rate API
+  description: Exchange rate quote service for cross-border currency conversions.
+  version: '1.0.0'
+
+servers:
+  - url: http://localhost:8080
+    description: Local development
+
+paths:
+  /health:
+    get:
+      summary: Health check
+      operationId: getHealth
+      tags: [Health]
+      responses:
+        '200':
+          description: Service is healthy.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              example:
+                status: UP
+                version: '1.0.0'
+                timestamp: '2026-05-14T08:14:24Z'
+
+  /api/v1/exchange-rate:
+    get:
+      summary: Get exchange rate quote
+      description: Returns a computed exchange rate quote for a given currency pair and sender country. The quote includes base rate, markup, final rate, fees, and an expiry window.
+      operationId: getExchangeRate
+      tags: [Exchange]
+      parameters:
+        - name: from
+          in: query
+          required: true
+          description: Source currency code (ISO 4217).
+          schema:
+            type: string
+            enum: [NGN, CAD, USD, GBP]
+            example: USD
+        - name: to
+          in: query
+          required: true
+          description: Target currency code (ISO 4217). Must differ from `from`.
+          schema:
+            type: string
+            enum: [NGN, CAD, USD, GBP]
+            example: NGN
+        - name: sender_country
+          in: query
+          required: true
+          description: Country of the sender.
+          schema:
+            type: string
+            enum: [Nigeria, Canada, United States, United Kingdom]
+            example: United States
+      responses:
+        '200':
+          description: Quote generated successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExchangeSuccessResponse'
+              example:
+                success: true
+                timestamp: '2026-05-14T08:14:25Z'
+                data:
+                  id: '67af452c-caf7-4af4-957b-a2881b173471'
+                  exchange_from: USD
+                  exchange_to: NGN
+                  sender_country: United States
+                  base_rate: '1580'
+                  markup_percentage: '2'
+                  final_rate: '1548.4'
+                  fee_type: FIXED
+                  transaction_fee: '1.5'
+                  quote_expiry_seconds: 30
+                  generated_at: '2026-05-14T08:14:25.143Z'
+        '400':
+          description: Missing required query parameter.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                timestamp: '2026-05-14T08:16:40Z'
+                error:
+                  code: MISSING_PARAMETER
+                  message: A required query parameter is missing.
+        '404':
+          description: Currency pair not configured.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                timestamp: '2026-05-14T08:16:40Z'
+                error:
+                  code: UNSUPPORTED_CURRENCY_PAIR
+                  message: No exchange rate is configured for this currency pair.
+        '422':
+          description: Validation error (invalid currency, same currency, or unsupported country).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                invalidCurrency:
+                  summary: Invalid currency code
+                  value:
+                    success: false
+                    timestamp: '2026-05-14T08:16:56Z'
+                    error:
+                      code: INVALID_CURRENCY
+                      message: One or more currency codes are not supported.
+                sameCurrency:
+                  summary: Same from and to currency
+                  value:
+                    success: false
+                    timestamp: '2026-05-14T08:16:56Z'
+                    error:
+                      code: SAME_CURRENCY
+                      message: From and To currencies must be different.
+                invalidCountry:
+                  summary: Unsupported sender country
+                  value:
+                    success: false
+                    timestamp: '2026-05-14T08:16:56Z'
+                    error:
+                      code: INVALID_COUNTRY
+                      message: Sender Country is not in the supported list.
+        '500':
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                timestamp: '2026-05-14T08:16:40Z'
+                error:
+                  code: INTERNAL_ERROR
+                  message: An unexpected error occurred.
+
+  /internal/v1/rates:
+    post:
+      summary: Ingest provider exchange rate event
+      description: |
+        Internal endpoint used by providers to submit exchange rates asynchronously.
+        The handler validates the payload and enqueues it to a Redis Stream for processing.
+      operationId: postInternalRate
+      tags: [Internal]
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RateEvent'
+            example:
+              event_id: '67af452c-caf7-4af4-957b-a2881b173471'
+              provider_id: 'provider_1'
+              pair: 'USD_BDT'
+              rate: 119.45
+              timestamp: '2026-05-19T10:30:00Z'
+      responses:
+        '202':
+          description: Accepted for asynchronous processing.
+        '400':
+          description: Invalid JSON payload.
+        '401':
+          description: Unauthorized (missing/invalid credentials).
+        '422':
+          description: Validation error (invalid event_id, pair, rate, or timestamp).
+        '500':
+          description: Internal server error (enqueue failed).
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: UP
+        version:
+          type: string
+          example: '1.0.0'
+        timestamp:
+          type: string
+          format: date-time
+
+    QuoteData:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        exchange_from:
+          type: string
+          example: USD
+        exchange_to:
+          type: string
+          example: NGN
+        sender_country:
+          type: string
+          example: United States
+        base_rate:
+          type: string
+          description: Pre-markup exchange rate as a decimal string.
+          example: '1580'
+        markup_percentage:
+          type: string
+          description: Markup percentage applied.
+          example: '2'
+        final_rate:
+          type: string
+          description: Rate after markup deduction.
+          example: '1548.4'
+        fee_type:
+          type: string
+          enum: [FIXED]
+          example: FIXED
+        transaction_fee:
+          type: string
+          example: '1.5'
+        quote_expiry_seconds:
+          type: integer
+          example: 30
+        generated_at:
+          type: string
+          format: date-time
+
+    RateEvent:
+      type: object
+      required: [event_id, provider_id, pair, rate, timestamp]
+      properties:
+        event_id:
+          type: string
+          description: Unique event identifier (UUID).
+          example: '67af452c-caf7-4af4-957b-a2881b173471'
+        provider_id:
+          type: string
+          example: 'provider_1'
+        pair:
+          type: string
+          description: Currency pair in AAA_BBB format.
+          example: 'USD_BDT'
+        rate:
+          type: number
+          format: double
+          example: 119.45
+        timestamp:
+          type: string
+          format: date-time
+          example: '2026-05-19T10:30:00Z'
+
+    ExchangeSuccessResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        timestamp:
+          type: string
+          format: date-time
+        data:
+          $ref: '#/components/schemas/QuoteData'
+
+    ErrorBody:
+      type: object
+      properties:
+        code:
+          type: string
+          example: MISSING_PARAMETER
+        message:
+          type: string
+          example: A required query parameter is missing.
+
+    ErrorResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        timestamp:
+          type: string
+          format: date-time
+        error:
+          $ref: '#/components/schemas/ErrorBody'

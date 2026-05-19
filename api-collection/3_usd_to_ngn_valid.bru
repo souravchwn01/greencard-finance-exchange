@@ -1,0 +1,17 @@
+meta {
+  name: Valid Pair (USD to NGN)
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{base-url}}/api/v1/exchange-rate?from=USD&to=NGN&sender_country=United States
+  body: none
+  auth: none
+}
+
+params:query {
+  from: USD
+  to: NGN
+  sender_country: United States
+}

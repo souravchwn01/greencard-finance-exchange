@@ -1,0 +1,17 @@
+meta {
+  name: Valid Pair (NGN to CAD)
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{base-url}}/api/v1/exchange-rate?from=CAD&to=NGN&sender_country=Canada
+  body: none
+  auth: none
+}
+
+params:query {
+  from: CAD
+  to: NGN
+  sender_country: Canada
+}
