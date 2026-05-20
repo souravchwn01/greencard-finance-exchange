@@ -25,6 +25,11 @@ type Config struct {
 	// PostgreSQL
 	PostgresDSN string
 
+	// Supabase storage for evidence upload
+	SupabaseURL          string
+	SupabaseServiceRoleKey string
+	SupabaseStorageBucket string
+
 	// Internal provider ingest auth (either API key or bearer token must be set)
 	InternalAPIKey      string
 	InternalBearerToken string
@@ -61,6 +66,9 @@ func Load() (*Config, error) {
 	v.SetDefault("STREAM_CLAIM_MIN_IDLE_SECONDS", 30)        // 30s
 	v.SetDefault("STREAM_READ_BLOCK_TIME_MS", 2000)          // 2s
 	v.SetDefault("POSTGRES_DSN", "")                         // required for worker
+	v.SetDefault("SUPABASE_URL", "")                        // required for quote evidence upload
+	v.SetDefault("SUPABASE_SERVICE_ROLE_KEY", "")          // required for quote evidence upload
+	v.SetDefault("SUPABASE_STORAGE_BUCKET", "")             // required for quote evidence upload
 	v.SetDefault("INTERNAL_API_KEY", "")                     // at least one required
 	v.SetDefault("INTERNAL_BEARER_TOKEN", "")                // at least one required
 
@@ -88,6 +96,15 @@ func Load() (*Config, error) {
 	if strings.TrimSpace(v.GetString("POSTGRES_DSN")) == "" {
 		return nil, fmt.Errorf("missing required environment variable: POSTGRES_DSN")
 	}
+	if strings.TrimSpace(v.GetString("SUPABASE_URL")) == "" {
+		return nil, fmt.Errorf("missing required environment variable: SUPABASE_URL")
+	}
+	if strings.TrimSpace(v.GetString("SUPABASE_SERVICE_ROLE_KEY")) == "" {
+		return nil, fmt.Errorf("missing required environment variable: SUPABASE_SERVICE_ROLE_KEY")
+	}
+	if strings.TrimSpace(v.GetString("SUPABASE_STORAGE_BUCKET")) == "" {
+		return nil, fmt.Errorf("missing required environment variable: SUPABASE_STORAGE_BUCKET")
+	}
 
 	return &Config{
 		AppPort:                v.GetString("APP_PORT"),
@@ -103,6 +120,9 @@ func Load() (*Config, error) {
 		RedisDB:       v.GetInt("REDIS_DB"),
 
 		PostgresDSN: strings.TrimSpace(v.GetString("POSTGRES_DSN")),
+		SupabaseURL:          strings.TrimSpace(v.GetString("SUPABASE_URL")),
+		SupabaseServiceRoleKey: strings.TrimSpace(v.GetString("SUPABASE_SERVICE_ROLE_KEY")),
+		SupabaseStorageBucket: strings.TrimSpace(v.GetString("SUPABASE_STORAGE_BUCKET")),
 
 		InternalAPIKey:      internalAPIKey,
 		InternalBearerToken: internalBearer,

@@ -1,0 +1,74 @@
+# Saved Quotes - Bruno collection
+# Multiple provider rate support with evidence upload
+
+@baseUrl = http://localhost:8080
+@quoteId = 123e4567-e89b-12d3-a456-426614174000
+
+# ==========================================================
+# 1. List all saved quotes with pagination
+# ==========================================================
+
+GET {{baseUrl}}/api/v1/quotes?limit=20&offset=0
+
+# ==========================================================
+# 2. Create saved quote with multiple provider rates
+# ==========================================================
+
+POST {{baseUrl}}/api/v1/quotes
+Content-Type: multipart/form-data
+
+--data
+provider_id=alpha_finance
+exchange_from=USD
+exchange_to=NGN
+sender_country=United States
+base_rate=1700.50
+markup_percentage=2.5
+final_rate=1742.75
+fee_type=FIXED
+transaction_fee=0
+quote_expiry_seconds=900
+selected_provider_id=alpha_finance
+provider_rates=[{"provider_id":"alpha_finance","rate":"1700.50"},{"provider_id":"beta_exchange","rate":"1705.00"},{"provider_id":"gamma_rates","rate":"1698.25"}]
+notes=Provider confirmed rate valid for 30 mins
+# evidence_file=@/path/to/whatsapp-screenshot.png
+--end
+
+# ==========================================================
+# 3. Get a specific saved quote with all provider options
+# ==========================================================
+
+GET {{baseUrl}}/api/v1/quotes/{{quoteId}}
+
+# ==========================================================
+# 4. Update quote - change selected provider and margin
+# ==========================================================
+
+PUT {{baseUrl}}/api/v1/quotes/{{quoteId}}
+Content-Type: multipart/form-data
+
+--data
+selected_provider_id=gamma_rates
+provider_rates=[{"provider_id":"alpha_finance","rate":"1700.50"},{"provider_id":"beta_exchange","rate":"1705.00"},{"provider_id":"gamma_rates","rate":"1698.25"}]
+markup_percentage=1.8
+final_rate=1726.53
+notes=Switched to Gamma Rates for better spread
+--end
+
+# ==========================================================
+# 5. Update quote with new evidence (WhatsApp screenshot)
+# ==========================================================
+
+PUT {{baseUrl}}/api/v1/quotes/{{quoteId}}
+Content-Type: multipart/form-data
+
+--data
+notes=Updated with provider confirmation screenshot
+# evidence_file=@/path/to/new-whatsapp-proof.png
+--end
+
+# ==========================================================
+# 6. Delete saved quote
+# ==========================================================
+
+DELETE {{baseUrl}}/api/v1/quotes/{{quoteId}}

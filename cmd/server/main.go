@@ -16,6 +16,8 @@ import (
 	"github.com/gfc-app-finance/greencard-mobile/exchange/internal/middleware"
 	"github.com/gfc-app-finance/greencard-mobile/exchange/internal/rates"
 	"github.com/gfc-app-finance/greencard-mobile/exchange/internal/service"
+	"github.com/gfc-app-finance/greencard-mobile/exchange/internal/supabase"
+	"github.com/gfc-app-finance/greencard-mobile/exchange/internal/transactions"
 	appvalidator "github.com/gfc-app-finance/greencard-mobile/exchange/internal/validator"
 	"github.com/gfc-app-finance/greencard-mobile/exchange/routes"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -80,6 +82,11 @@ func main() {
 	countriesHandler := handler.NewCountriesHandler(cfg.SupportedCountriesFile)
 	ratesHandler := handler.NewRatesHandler(rateService)
 
+	transactionStore := transactions.NewStore(pgPool)
+	transactionService := transactions.NewService(transactionStore)
+	supabaseStorage := supabase.NewStorage(cfg.SupabaseURL, cfg.SupabaseStorageBucket, cfg.SupabaseServiceRoleKey)
+	quotesHandler := handler.NewQuotesHandler(transactionService, supabaseStorage, validate)
+
 	router := routes.New(
 		logger,
 		exchangeHandler,
@@ -87,6 +94,7 @@ func main() {
 		internalRatesHandler,
 		countriesHandler,
 		ratesHandler,
+		quotesHandler,
 		cfg.InternalAPIKey,
 		cfg.InternalBearerToken,
 	)

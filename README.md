@@ -54,6 +54,9 @@ Public quote requests read **only** from Redis cache (no hardcoded rates, no liv
 | `POSTGRES_DSN`              | Yes      | None                            | PostgreSQL connection string for rate history persistence. |
 | `INTERNAL_API_KEY`          | Yes\*    | None                            | Internal provider API key (set this or bearer token).      |
 | `INTERNAL_BEARER_TOKEN`     | Yes\*    | None                            | Internal provider bearer token (set this or API key).      |
+| `SUPABASE_URL`              | Yes      | None                            | Supabase project URL (for evidence uploads).               |
+| `SUPABASE_SERVICE_ROLE_KEY` | Yes      | None                            | Service role key for Supabase storage uploads.             |
+| `SUPABASE_STORAGE_BUCKET`   | Yes      | None                            | Supabase storage bucket name for evidence files.           |
 
 ## Supported Countries
 
@@ -125,11 +128,95 @@ To use it:
 2. Click **Open Collection**.
 3. Select the `api-collection` directory in this project.
 
+The collection now includes saved-quote examples for the internal quote dashboard (list, create, update, get, delete). See `api-collection/10_quotes.bru` for requests that exercise the new `/api/v1/quotes` endpoints.
+
 ## API Documentation
 
 Swagger UI is served at [http://localhost:8080/docs](http://localhost:8080/docs) when the server is running.
 
 The raw OpenAPI 3.0 spec is available at `/docs/openapi.yaml`.
+
+### Saved Quotes (new)
+
+The service exposes a saved-quote CRUD API used by the internal dashboard and frontend evidence workflow:
+
+- `GET /api/v1/quotes` — list recent saved quotes (query params: `limit`, `offset`).
+- `GET /api/v1/quotes/:id` — get a saved quote by UUID.
+- `POST /api/v1/quotes` — create a saved quote (multipart/form-data, supports `evidence_file` upload).
+- `PUT /api/v1/quotes/:id` — update a saved quote (multipart/form-data, supports `evidence_file` upload).
+- `DELETE /api/v1/quotes/:id` — delete a saved quote.
+
+Example (create):
+
+```bash
+curl -X POST "http://localhost:8080/api/v1/quotes" \
+  -F "exchange_from=USD" \
+  -F "exchange_to=NGN" \
+  -F "sender_country=United States" \
+  -F "base_rate=1700" \
+  -F "final_rate=1742.5" \
+  -F "fee_type=FIXED" \
+  -F "quote_expiry_seconds=900" \
+  -F "evidence_file=@/path/to/proof.png"
+```
+
+## Frontend Wireframe
+
+A sample UI wireframe showing how to display and select from multiple provider rates is available at:
+
+```
+docs/wireframe-quotes-dashboard.html
+```
+
+Open this file in a browser to see:
+- List of recent quotes
+- Provider rate comparison cards
+- Margin/fee adjustment controls
+- Evidence/WhatsApp upload section
+- Sample JSON API response
+
+### Multi-Provider Rate Support
+
+When creating or updating a saved quote, you can specify multiple provider rates and select the active one:
+
+```bash
+curl -X POST "http://localhost:8080/api/v1/quotes" \
+  -F "exchange_from=USD" \
+  -F "exchange_to=NGN" \
+  -F "sender_country=United States" \
+  -F "base_rate=1700.50" \
+  -F "final_rate=1742.75" \
+  -F "fee_type=FIXED" \
+  -F "quote_expiry_seconds=900" \
+  -F "selected_provider_id=alpha_finance" \
+  -F 'provider_rates=[{"provider_id":"alpha_finance","rate":"1700.50"},{"provider_id":"beta_exchange","rate":"1705.00"},{"provider_id":"gamma_rates","rate":"1698.25"}]' \
+  -F "evidence_file=@/path/to/whatsapp-screenshot.png" \
+  -F "notes=Provider confirmed rate valid for 30 mins"
+```
+
+The response includes all provider options and the currently selected provider:
+
+```json
+{
+  "provider_rates": [
+    {"provider_id": "alpha_finance", "rate": "1700.50"},
+    {"provider_id": "beta_exchange", "rate": "1705.00"},
+    {"provider_id": "gamma_rates", "rate": "1698.25"}
+  ],
+  "selected_provider_id": "alpha_finance",
+  "base_rate": "1700.50",
+  "final_rate": "1742.75"
+}
+```
+
+Update a quote to switch to a different provider:
+
+```bash
+curl -X PUT "http://localhost:8080/api/v1/quotes/{quote_id}" \
+  -F "selected_provider_id=gamma_rates" \
+  -F "final_rate=1726.53" \
+  -F "markup_percentage=1.8"
+```
 
 ## Make Targets
 

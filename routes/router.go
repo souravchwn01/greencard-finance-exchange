@@ -15,6 +15,7 @@ func New(
 	internalRatesHandler *handler.InternalRatesHandler,
 	countriesHandler *handler.CountriesHandler,
 	ratesHandler *handler.RatesHandler,
+	quotesHandler *handler.QuotesHandler,
 	internalAPIKey string,
 	internalBearerToken string,
 ) *gin.Engine {
@@ -28,6 +29,11 @@ func New(
 	router.GET("/api/v1/exchange-rate", exchangeHandler.GetExchangeRate)
 	router.GET("/api/v1/supported-countries", countriesHandler.GetSupportedCountries)
 	router.GET("/api/v1/rates", ratesHandler.GetAllRates)
+	router.GET("/api/v1/quotes", quotesHandler.ListQuotes)
+	router.GET("/api/v1/quotes/:id", quotesHandler.GetQuote)
+	router.POST("/api/v1/quotes", quotesHandler.CreateQuote)
+	router.PUT("/api/v1/quotes/:id", quotesHandler.UpdateQuote)
+	router.DELETE("/api/v1/quotes/:id", quotesHandler.DeleteQuote)
 
 	internal := router.Group("/internal/v1")
 	internal.Use(middleware.InternalAuth(internalAPIKey, internalBearerToken))

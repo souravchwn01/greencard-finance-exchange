@@ -148,6 +148,137 @@ paths:
                   code: INTERNAL_ERROR
                   message: An unexpected error occurred.
 
+  /api/v1/quotes:
+    get:
+      summary: List saved quotes
+      operationId: listSavedQuotes
+      tags: [Quotes]
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          description: Number of results to return.
+          schema:
+            type: integer
+            default: 20
+        - name: offset
+          in: query
+          required: false
+          description: Offset for pagination.
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: Saved quotes returned successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuoteListResponse'
+    post:
+      summary: Create a saved quote transaction
+      operationId: createSavedQuote
+      tags: [Quotes]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CreateQuoteForm'
+      responses:
+        '201':
+          description: Saved quote created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuoteDetailResponse'
+        '400':
+          description: Invalid request payload.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/v1/quotes/{id}:
+    get:
+      summary: Get a saved quote by id
+      operationId: getSavedQuote
+      tags: [Quotes]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Quote transaction UUID.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Saved quote returned.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuoteDetailResponse'
+        '404':
+          description: Quote not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    put:
+      summary: Update a saved quote transaction
+      operationId: updateSavedQuote
+      tags: [Quotes]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/UpdateQuoteForm'
+      responses:
+        '200':
+          description: Saved quote updated successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuoteDetailResponse'
+        '400':
+          description: Invalid request payload.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      summary: Delete a saved quote transaction
+      operationId: deleteSavedQuote
+      tags: [Quotes]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Saved quote deleted successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+        '404':
+          description: Quote not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
   /internal/v1/rates:
     post:
       summary: Ingest provider exchange rate event
@@ -213,6 +344,9 @@ components:
         id:
           type: string
           format: uuid
+        provider_id:
+          type: string
+          example: provider_1
         exchange_from:
           type: string
           example: USD
@@ -236,7 +370,6 @@ components:
           example: '1548.4'
         fee_type:
           type: string
-          enum: [FIXED]
           example: FIXED
         transaction_fee:
           type: string
@@ -245,6 +378,138 @@ components:
           type: integer
           example: 30
         generated_at:
+          type: string
+          format: date-time
+        quote_expires_at:
+          type: string
+          format: date-time
+        evidence_url:
+          type: string
+          format: uri
+          example: 'https://your-project-ref.supabase.co/storage/v1/object/public/your-bucket/quotes/123e4567-e89b-12d3-a456-426614174000/proof.png'
+        notes:
+          type: string
+          example: Provider confirmed rate valid for 30 mins.
+
+    CreateQuoteForm:
+      type: object
+      properties:
+        provider_id:
+          type: string
+          example: provider_1
+        exchange_from:
+          type: string
+          example: USD
+        exchange_to:
+          type: string
+          example: NGN
+        sender_country:
+          type: string
+          example: United States
+        base_rate:
+          type: string
+          example: '1700'
+        markup_percentage:
+          type: string
+          example: '2.5'
+        final_rate:
+          type: string
+          example: '1742.5'
+        fee_type:
+          type: string
+          example: FIXED
+        transaction_fee:
+          type: string
+          example: '1.50'
+        quote_expiry_seconds:
+          type: integer
+          example: 900
+        generated_at:
+          type: string
+          format: date-time
+          example: '2026-05-20T17:30:00Z'
+        evidence_file:
+          type: string
+          format: binary
+        notes:
+          type: string
+          example: Provider confirmed rate valid for 30 mins.
+      required: [exchange_from, exchange_to, sender_country, base_rate, final_rate, fee_type, quote_expiry_seconds]
+
+    UpdateQuoteForm:
+      type: object
+      properties:
+        base_rate:
+          type: string
+          example: '1700'
+        markup_percentage:
+          type: string
+          example: '2.5'
+        final_rate:
+          type: string
+          example: '1742.5'
+        fee_type:
+          type: string
+          example: FIXED
+        transaction_fee:
+          type: string
+          example: '1.50'
+        quote_expiry_seconds:
+          type: integer
+          example: 900
+        generated_at:
+          type: string
+          format: date-time
+          example: '2026-05-20T17:30:00Z'
+        evidence_file:
+          type: string
+          format: binary
+        notes:
+          type: string
+          example: Adjusted margin notes.
+
+    QuoteDetailResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        timestamp:
+          type: string
+          format: date-time
+        data:
+          $ref: '#/components/schemas/QuoteData'
+
+    QuoteListResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        timestamp:
+          type: string
+          format: date-time
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/QuoteData'
+        meta:
+          type: object
+          properties:
+            limit:
+              type: integer
+              example: 20
+            offset:
+              type: integer
+              example: 0
+
+    SuccessResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        timestamp:
           type: string
           format: date-time
 
