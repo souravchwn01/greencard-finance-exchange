@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -16,9 +17,11 @@ import (
 	"github.com/gfc-app-finance/greencard-mobile/exchange/internal/transactions"
 )
 
+const maxListLimit = 100
+
 type quotesListResponse struct {
-	Success   bool                       `json:"success"`
-	Timestamp string                     `json:"timestamp"`
+	Success   bool                            `json:"success"`
+	Timestamp string                          `json:"timestamp"`
 	Data      []transactions.QuoteTransaction `json:"data"`
 	Meta      struct {
 		Limit  int `json:"limit"`
@@ -27,8 +30,8 @@ type quotesListResponse struct {
 }
 
 type quoteDetailResponse struct {
-	Success   bool                     `json:"success"`
-	Timestamp string                   `json:"timestamp"`
+	Success   bool                          `json:"success"`
+	Timestamp string                        `json:"timestamp"`
 	Data      *transactions.QuoteTransaction `json:"data"`
 }
 
@@ -59,6 +62,9 @@ func (h *QuotesHandler) ListQuotes(c *gin.Context) {
 		if parsed, err := strconv.Atoi(param); err == nil && parsed > 0 {
 			limit = parsed
 		}
+	}
+	if limit > maxListLimit {
+		limit = maxListLimit
 	}
 	if param := c.Query("offset"); param != "" {
 		if parsed, err := strconv.Atoi(param); err == nil && parsed >= 0 {
@@ -93,7 +99,11 @@ func (h *QuotesHandler) GetQuote(c *gin.Context) {
 
 	quote, err := h.transactionService.Get(c.Request.Context(), id)
 	if err != nil {
-		h.respondWithError(c, http.StatusNotFound, "QUOTE_NOT_FOUND", "Saved quote not found.")
+		if errors.Is(err, transactions.ErrQuoteNotFound) {
+			h.respondWithError(c, http.StatusNotFound, "QUOTE_NOT_FOUND", "Saved quote not found.")
+			return
+		}
+		h.respondWithError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to fetch saved quote.")
 		return
 	}
 
@@ -106,8 +116,8 @@ func (h *QuotesHandler) GetQuote(c *gin.Context) {
 
 type createQuoteRequest struct {
 	ProviderID         string `form:"provider_id"`
-	ProviderRates       string `form:"provider_rates"`
-	SelectedProviderID  string `form:"selected_provider_id"`
+	ProviderRates      string `form:"provider_rates"`
+	SelectedProviderID string `form:"selected_provider_id"`
 	ExchangeFrom       string `form:"exchange_from" validate:"required,iso4217"`
 	ExchangeTo         string `form:"exchange_to" validate:"required,iso4217,nefield=ExchangeFrom"`
 	SenderCountry      string `form:"sender_country" validate:"required,supported_country"`
@@ -203,13 +213,13 @@ func (h *QuotesHandler) CreateQuote(c *gin.Context) {
 
 	quoteID := uuid.New()
 	evidenceURL := ""
-	if file, err := c.FormFile("evidence_file"); err == nil {
+	if file, fileErr := c.FormFile("evidence_file"); fileErr == nil {
 		evidenceURL, err = h.storage.UploadQuoteEvidence(c.Request.Context(), quoteID, file)
 		if err != nil {
 			h.respondWithError(c, http.StatusInternalServerError, "EVIDENCE_UPLOAD_FAILED", fmt.Sprintf("Failed to upload evidence: %v", err))
 			return
 		}
-	} else if err != nil && err != http.ErrMissingFile {
+	} else if fileErr != http.ErrMissingFile {
 		h.respondWithError(c, http.StatusBadRequest, "INVALID_EVIDENCE_FILE", "Invalid evidence file upload.")
 		return
 	}
@@ -233,7 +243,6 @@ func (h *QuotesHandler) CreateQuote(c *gin.Context) {
 		Notes:              request.Notes,
 	}
 
-	// parse provider_rates JSON if provided
 	if request.ProviderRates != "" {
 		var prs []transactions.ProviderRate
 		if err := json.Unmarshal([]byte(request.ProviderRates), &prs); err != nil {
@@ -245,7 +254,7 @@ func (h *QuotesHandler) CreateQuote(c *gin.Context) {
 
 	quote, err := h.transactionService.Create(c.Request.Context(), createReq)
 	if err != nil {
-		h.respondWithError(c, http.StatusInternalServerError, "SAVE_QUOTE_FAILED", err.Error())
+		h.respondWithError(c, http.StatusInternalServerError, "SAVE_QUOTE_FAILED", "Failed to save quote.")
 		return
 	}
 
@@ -278,6 +287,8 @@ func (h *QuotesHandler) UpdateQuote(c *gin.Context) {
 	request.QuoteExpirySeconds = c.PostForm("quote_expiry_seconds")
 	request.GeneratedAt = c.PostForm("generated_at")
 	request.Notes = c.PostForm("notes")
+	request.ProviderRates = c.PostForm("provider_rates")
+	request.SelectedProviderID = c.PostForm("selected_provider_id")
 
 	var updateReq transactions.UpdateQuoteTransactionRequest
 	if request.BaseRate != "" {
@@ -334,7 +345,6 @@ func (h *QuotesHandler) UpdateQuote(c *gin.Context) {
 	if request.Notes != "" {
 		updateReq.Notes = &request.Notes
 	}
-	// parse provider rates and selected provider id for update
 	if request.ProviderRates != "" {
 		var prs []transactions.ProviderRate
 		if err := json.Unmarshal([]byte(request.ProviderRates), &prs); err != nil {
@@ -347,21 +357,25 @@ func (h *QuotesHandler) UpdateQuote(c *gin.Context) {
 		updateReq.SelectedProviderID = &request.SelectedProviderID
 	}
 
-	if file, err := c.FormFile("evidence_file"); err == nil {
+	if file, fileErr := c.FormFile("evidence_file"); fileErr == nil {
 		evidenceURL, err := h.storage.UploadQuoteEvidence(c.Request.Context(), id, file)
 		if err != nil {
 			h.respondWithError(c, http.StatusInternalServerError, "EVIDENCE_UPLOAD_FAILED", fmt.Sprintf("Failed to upload evidence: %v", err))
 			return
 		}
 		updateReq.EvidenceURL = &evidenceURL
-	} else if err != nil && err != http.ErrMissingFile {
+	} else if fileErr != http.ErrMissingFile {
 		h.respondWithError(c, http.StatusBadRequest, "INVALID_EVIDENCE_FILE", "Invalid evidence file upload.")
 		return
 	}
 
 	quote, err := h.transactionService.Update(c.Request.Context(), id, updateReq)
 	if err != nil {
-		h.respondWithError(c, http.StatusInternalServerError, "UPDATE_QUOTE_FAILED", err.Error())
+		if errors.Is(err, transactions.ErrQuoteNotFound) {
+			h.respondWithError(c, http.StatusNotFound, "QUOTE_NOT_FOUND", "Saved quote not found.")
+			return
+		}
+		h.respondWithError(c, http.StatusInternalServerError, "UPDATE_QUOTE_FAILED", "Failed to update quote.")
 		return
 	}
 
@@ -381,7 +395,11 @@ func (h *QuotesHandler) DeleteQuote(c *gin.Context) {
 	}
 
 	if err := h.transactionService.Delete(c.Request.Context(), id); err != nil {
-		h.respondWithError(c, http.StatusInternalServerError, "DELETE_QUOTE_FAILED", err.Error())
+		if errors.Is(err, transactions.ErrQuoteNotFound) {
+			h.respondWithError(c, http.StatusNotFound, "QUOTE_NOT_FOUND", "Saved quote not found.")
+			return
+		}
+		h.respondWithError(c, http.StatusInternalServerError, "DELETE_QUOTE_FAILED", "Failed to delete quote.")
 		return
 	}
 

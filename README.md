@@ -1,13 +1,65 @@
 # Exchange Rate API
 
-Simple exchange-rate quote API built with Go 1.22 and Gin.
+Exchange-rate quote API built with Go 1.25 and Gin.
 
 ## Prerequisites
 
-- Go 1.22+
-- Docker
+- Go 1.25+
+- Docker and Docker Compose v2
 
-## Local Setup
+## Running the Full Stack (Recommended)
+
+The entire system — PostgreSQL, Redis, Go API, and the Nginx-served frontend — runs with a single command:
+
+```bash
+make up
+```
+
+This builds the Go API image, starts all four services with health-check ordering, runs database migrations automatically on first startup, and serves the internal dashboard at **http://localhost:3000**.
+
+To run in the background:
+
+```bash
+make up-detach
+```
+
+Tail all service logs:
+
+```bash
+make logs
+```
+
+Stop and remove containers:
+
+```bash
+make down
+```
+
+Stop and remove containers **plus** the persistent PostgreSQL volume (full reset):
+
+```bash
+make down-volumes
+```
+
+### How the stack is wired
+
+```
+Browser → http://localhost:3000
+              ↓
+         Nginx (frontend container)
+              ├── / → serves frontend/index.html (static)
+              ├── /api/ → proxy → Go API :8080
+              ├── /internal/ → proxy → Go API :8080
+              └── /health → proxy → Go API :8080
+                              ↓
+                         Go API container
+                              ├── PostgreSQL container (quote storage, rate history)
+                              └── Redis container (rate cache, stream ingestion)
+```
+
+Nginx reverse-proxies all API traffic so the browser makes **no cross-origin requests** — CORS is eliminated entirely.
+
+## Local Development Setup (API only)
 
 1. Copy environment file:
 
@@ -136,15 +188,15 @@ Swagger UI is served at [http://localhost:8080/docs](http://localhost:8080/docs)
 
 The raw OpenAPI 3.0 spec is available at `/docs/openapi.yaml`.
 
-### Saved Quotes (new)
+### Saved Quotes
 
 The service exposes a saved-quote CRUD API used by the internal dashboard and frontend evidence workflow:
 
-- `GET /api/v1/quotes` — list recent saved quotes (query params: `limit`, `offset`).
-- `GET /api/v1/quotes/:id` — get a saved quote by UUID.
+- `GET /api/v1/quotes` — list recent saved quotes (query params: `limit` max 100, `offset`).
+- `GET /api/v1/quotes/:id` — get a saved quote by UUID. Returns `404` when not found.
 - `POST /api/v1/quotes` — create a saved quote (multipart/form-data, supports `evidence_file` upload).
-- `PUT /api/v1/quotes/:id` — update a saved quote (multipart/form-data, supports `evidence_file` upload).
-- `DELETE /api/v1/quotes/:id` — delete a saved quote.
+- `PUT /api/v1/quotes/:id` — update a saved quote (multipart/form-data, supports `evidence_file` upload, `provider_rates`, `selected_provider_id`). Returns `404` when not found.
+- `DELETE /api/v1/quotes/:id` — delete a saved quote. Returns `404` when not found.
 
 Example (create):
 
@@ -160,20 +212,29 @@ curl -X POST "http://localhost:8080/api/v1/quotes" \
   -F "evidence_file=@/path/to/proof.png"
 ```
 
-## Frontend Wireframe
+## Frontend — Internal Quote Dashboard
 
-A sample UI wireframe showing how to display and select from multiple provider rates is available at:
+The production frontend lives at `frontend/index.html` and is served by the Nginx container at **http://localhost:3000** when the stack is running.
 
-```
-docs/wireframe-quotes-dashboard.html
-```
+It is a fully self-contained single-page app (no build step, no framework dependencies) with the following features:
 
-Open this file in a browser to see:
-- List of recent quotes
-- Provider rate comparison cards
-- Margin/fee adjustment controls
-- Evidence/WhatsApp upload section
-- Sample JSON API response
+| Section | What it does |
+|---|---|
+| **Provider Rate Grid** | Add provider rows with pair, raw rate, margin %, and notes. Calculates the final rate in real time. |
+| **Countdown timers** | Each row tracks expiry. Status badges cycle: `pending → active → expiring (≤10 s) → expired`. |
+| **Push to Feed** | Sends the final rate to `POST /internal/v1/rates` (requires API key). Publishes to Redis Stream for async processing. |
+| **Evidence upload** | Attach a WhatsApp screenshot per row. Uploaded to Supabase Storage on save; a preview thumbnail is shown inline. |
+| **Save Quote** | Builds a multipart `POST /api/v1/quotes` with all fields (rates, provider IDs, expiry, evidence file, notes). |
+| **Customer Preview** | Calls `GET /api/v1/exchange-rate` for each active pair and renders the live customer-facing rate card. |
+| **Saved Quotes table** | Paginated list via `GET /api/v1/quotes` with delete support. |
+| **Settings modal** | Enter and persist the `X-API-Key` and Bearer token in `localStorage` — no server-side session needed. |
+| **Health indicator** | Polls `GET /health` every 30 s and shows a live status pill in the header. |
+
+On first load, if no API key is stored the settings modal opens automatically.
+
+### Wireframe reference
+
+The original design wireframe is at `docs/wireframe-quotes-dashboard.html` — open it in a browser to see the layout the implementation was built from.
 
 ### Multi-Provider Rate Support
 
@@ -220,8 +281,15 @@ curl -X PUT "http://localhost:8080/api/v1/quotes/{quote_id}" \
 
 ## Make Targets
 
-- `make run`
-- `make build`
-- `make test`
-- `make docker-build`
-- `make lint`
+| Target | Description |
+|---|---|
+| `make run` | Run the Go API locally (no Docker) |
+| `make build` | Compile the binary to `bin/server` |
+| `make test` | Run all Go tests with verbose output |
+| `make lint` | Run `go vet` |
+| `make docker-build` | Build the API Docker image only |
+| `make up` | Build and start the full stack (postgres + redis + api + frontend) |
+| `make up-detach` | Same as `up` but runs in the background |
+| `make down` | Stop and remove all containers |
+| `make down-volumes` | Stop and remove containers **and** the PostgreSQL data volume |
+| `make logs` | Tail logs from all running services |

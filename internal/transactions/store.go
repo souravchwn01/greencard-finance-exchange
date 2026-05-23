@@ -3,11 +3,12 @@ package transactions
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/shopspring/decimal"
 )
 
 type Store struct {
@@ -19,7 +20,6 @@ func NewStore(pool *pgxpool.Pool) *Store {
 }
 
 func (s *Store) CreateQuoteTransaction(ctx context.Context, qt QuoteTransaction) error {
-	// Marshal provider rates to JSON for storage
 	var providerRatesJSON []byte
 	var err error
 	if len(qt.ProviderRates) > 0 {
@@ -31,38 +31,19 @@ func (s *Store) CreateQuoteTransaction(ctx context.Context, qt QuoteTransaction)
 
 	_, err = s.pool.Exec(ctx, `
 		INSERT INTO quote_transactions (
-			base_rate, markup_percentage, final_rate, fee_type, transaction_fee,
-			quote_expiry_seconds, generated_at, quote_expires_at, evidence_url, provider_rates, selected_provider_id, notes,
-			created_at, updated_at
-			selected_provider_id,
-			exchange_from,
-			exchange_to,
-			sender_country,
-			base_rate,
-			markup_percentage,
-			final_rate,
-			fee_type,
-			transaction_fee,
-			quote_expiry_seconds,
-			generated_at,
-			quote_expires_at,
-		var providerRatesRaw []byte
-		if err := rows.Scan(&qt.ID, &qt.ProviderID, &qt.ExchangeFrom, &qt.ExchangeTo, &qt.SenderCountry,
-			&qt.BaseRate, &qt.MarkupPercentage, &qt.FinalRate, &qt.FeeType, &qt.TransactionFee,
-			&qt.QuoteExpirySeconds, &qt.GeneratedAt, &qt.QuoteExpiresAt, &qt.EvidenceURL, &providerRatesRaw, &qt.SelectedProviderID, &qt.Notes,
-			&qt.CreatedAt, &qt.UpdatedAt); err != nil {
-			return nil, fmt.Errorf("scan quote transaction: %w", err)
-		}
-		if len(providerRatesRaw) > 0 {
-			if err := json.Unmarshal(providerRatesRaw, &qt.ProviderRates); err != nil {
-				return nil, fmt.Errorf("unmarshal provider rates: %w", err)
-			}
-		}
+			id, provider_id, provider_rates, selected_provider_id,
+			exchange_from, exchange_to, sender_country,
+			base_rate, markup_percentage, final_rate,
+			fee_type, transaction_fee,
+			quote_expiry_seconds, generated_at, quote_expires_at,
+			evidence_url, notes, created_at, updated_at
 		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
-	`, qt.ID, qt.ProviderID, providerRatesJSON, qt.SelectedProviderID, qt.ExchangeFrom, qt.ExchangeTo, qt.SenderCountry,
-		roundDecimal(qt.BaseRate), roundDecimal(qt.MarkupPercentage), roundDecimal(qt.FinalRate),
-		qt.FeeType, roundDecimal(qt.TransactionFee), qt.QuoteExpirySeconds, qt.GeneratedAt,
-		qt.QuoteExpiresAt, qt.EvidenceURL, qt.Notes, qt.CreatedAt, qt.UpdatedAt)
+	`, qt.ID, qt.ProviderID, providerRatesJSON, qt.SelectedProviderID,
+		qt.ExchangeFrom, qt.ExchangeTo, qt.SenderCountry,
+		qt.BaseRate, qt.MarkupPercentage, qt.FinalRate,
+		qt.FeeType, qt.TransactionFee,
+		qt.QuoteExpirySeconds, qt.GeneratedAt, qt.QuoteExpiresAt,
+		qt.EvidenceURL, qt.Notes, qt.CreatedAt, qt.UpdatedAt)
 	if err != nil {
 		return fmt.Errorf("insert quote transaction: %w", err)
 	}
@@ -73,18 +54,24 @@ func (s *Store) GetQuoteTransactionByID(ctx context.Context, id uuid.UUID) (*Quo
 	row := s.pool.QueryRow(ctx, `
 		SELECT id, provider_id, exchange_from, exchange_to, sender_country,
 			base_rate, markup_percentage, final_rate, fee_type, transaction_fee,
-			quote_expiry_seconds, generated_at, quote_expires_at, evidence_url, provider_rates, selected_provider_id, notes,
-			created_at, updated_at
+			quote_expiry_seconds, generated_at, quote_expires_at, evidence_url,
+			provider_rates, selected_provider_id, notes, created_at, updated_at
 		FROM quote_transactions
 		WHERE id = $1
 	`, id)
 
 	var qt QuoteTransaction
 	var providerRatesRaw []byte
-	if err := row.Scan(&qt.ID, &qt.ProviderID, &qt.ExchangeFrom, &qt.ExchangeTo, &qt.SenderCountry,
+	if err := row.Scan(
+		&qt.ID, &qt.ProviderID, &qt.ExchangeFrom, &qt.ExchangeTo, &qt.SenderCountry,
 		&qt.BaseRate, &qt.MarkupPercentage, &qt.FinalRate, &qt.FeeType, &qt.TransactionFee,
-		&qt.QuoteExpirySeconds, &qt.GeneratedAt, &qt.QuoteExpiresAt, &qt.EvidenceURL, &providerRatesRaw, &qt.SelectedProviderID, &qt.Notes,
-		&qt.CreatedAt, &qt.UpdatedAt); err != nil {
+		&qt.QuoteExpirySeconds, &qt.GeneratedAt, &qt.QuoteExpiresAt, &qt.EvidenceURL,
+		&providerRatesRaw, &qt.SelectedProviderID, &qt.Notes,
+		&qt.CreatedAt, &qt.UpdatedAt,
+	); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrQuoteNotFound
+		}
 		return nil, fmt.Errorf("query quote transaction: %w", err)
 	}
 	if len(providerRatesRaw) > 0 {
@@ -92,7 +79,6 @@ func (s *Store) GetQuoteTransactionByID(ctx context.Context, id uuid.UUID) (*Quo
 			return nil, fmt.Errorf("unmarshal provider rates: %w", err)
 		}
 	}
-
 	return &qt, nil
 }
 
@@ -100,8 +86,8 @@ func (s *Store) ListQuoteTransactions(ctx context.Context, limit, offset int) ([
 	rows, err := s.pool.Query(ctx, `
 		SELECT id, provider_id, exchange_from, exchange_to, sender_country,
 			base_rate, markup_percentage, final_rate, fee_type, transaction_fee,
-			quote_expiry_seconds, generated_at, quote_expires_at, evidence_url, notes,
-			created_at, updated_at
+			quote_expiry_seconds, generated_at, quote_expires_at, evidence_url,
+			provider_rates, selected_provider_id, notes, created_at, updated_at
 		FROM quote_transactions
 		ORDER BY created_at DESC
 		LIMIT $1 OFFSET $2
@@ -114,19 +100,26 @@ func (s *Store) ListQuoteTransactions(ctx context.Context, limit, offset int) ([
 	var results []QuoteTransaction
 	for rows.Next() {
 		var qt QuoteTransaction
-		if err := rows.Scan(&qt.ID, &qt.ProviderID, &qt.ExchangeFrom, &qt.ExchangeTo, &qt.SenderCountry,
+		var providerRatesRaw []byte
+		if err := rows.Scan(
+			&qt.ID, &qt.ProviderID, &qt.ExchangeFrom, &qt.ExchangeTo, &qt.SenderCountry,
 			&qt.BaseRate, &qt.MarkupPercentage, &qt.FinalRate, &qt.FeeType, &qt.TransactionFee,
-			&qt.QuoteExpirySeconds, &qt.GeneratedAt, &qt.QuoteExpiresAt, &qt.EvidenceURL, &qt.Notes,
-			&qt.CreatedAt, &qt.UpdatedAt); err != nil {
+			&qt.QuoteExpirySeconds, &qt.GeneratedAt, &qt.QuoteExpiresAt, &qt.EvidenceURL,
+			&providerRatesRaw, &qt.SelectedProviderID, &qt.Notes,
+			&qt.CreatedAt, &qt.UpdatedAt,
+		); err != nil {
 			return nil, fmt.Errorf("scan quote transaction: %w", err)
+		}
+		if len(providerRatesRaw) > 0 {
+			if err := json.Unmarshal(providerRatesRaw, &qt.ProviderRates); err != nil {
+				return nil, fmt.Errorf("unmarshal provider rates: %w", err)
+			}
 		}
 		results = append(results, qt)
 	}
-
 	if rows.Err() != nil {
 		return nil, fmt.Errorf("iterate quote transactions: %w", rows.Err())
 	}
-
 	return results, nil
 }
 
@@ -160,9 +153,10 @@ func (s *Store) UpdateQuoteTransaction(ctx context.Context, qt QuoteTransaction)
 			notes = $17,
 			updated_at = $18
 		WHERE id = $1
-	`, qt.ID, qt.ProviderID, providerRatesJSON, qt.SelectedProviderID, qt.ExchangeFrom, qt.ExchangeTo, qt.SenderCountry,
-		roundDecimal(qt.BaseRate), roundDecimal(qt.MarkupPercentage), roundDecimal(qt.FinalRate),
-		qt.FeeType, roundDecimal(qt.TransactionFee), qt.QuoteExpirySeconds, qt.GeneratedAt,
+	`, qt.ID, qt.ProviderID, providerRatesJSON, qt.SelectedProviderID,
+		qt.ExchangeFrom, qt.ExchangeTo, qt.SenderCountry,
+		qt.BaseRate, qt.MarkupPercentage, qt.FinalRate,
+		qt.FeeType, qt.TransactionFee, qt.QuoteExpirySeconds, qt.GeneratedAt,
 		qt.QuoteExpiresAt, qt.EvidenceURL, qt.Notes, qt.UpdatedAt)
 	if err != nil {
 		return fmt.Errorf("update quote transaction: %w", err)
@@ -171,15 +165,12 @@ func (s *Store) UpdateQuoteTransaction(ctx context.Context, qt QuoteTransaction)
 }
 
 func (s *Store) DeleteQuoteTransaction(ctx context.Context, id uuid.UUID) error {
-	_, err := s.pool.Exec(ctx, `
-		DELETE FROM quote_transactions WHERE id = $1
-	`, id)
+	tag, err := s.pool.Exec(ctx, `DELETE FROM quote_transactions WHERE id = $1`, id)
 	if err != nil {
 		return fmt.Errorf("delete quote transaction: %w", err)
 	}
+	if tag.RowsAffected() == 0 {
+		return ErrQuoteNotFound
+	}
 	return nil
-}
-
-func roundDecimal(value decimal.Decimal) decimal.Decimal {
-	return value
 }

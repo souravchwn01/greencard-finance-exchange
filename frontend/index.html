@@ -1,0 +1,1068 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GFC Exchange — Internal Operations</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --navy:        #0f172a;
+      --navy-light:  #1e293b;
+      --blue:        #2563eb;
+      --blue-bg:     #eff6ff;
+      --green:       #16a34a;
+      --green-bg:    #f0fdf4;
+      --amber:       #d97706;
+      --amber-bg:    #fffbeb;
+      --red:         #dc2626;
+      --red-bg:      #fef2f2;
+      --gray-50:     #f8fafc;
+      --gray-100:    #f1f5f9;
+      --gray-200:    #e2e8f0;
+      --gray-300:    #cbd5e1;
+      --gray-400:    #94a3b8;
+      --gray-500:    #64748b;
+      --gray-700:    #334155;
+      --gray-800:    #1e293b;
+      --white:       #ffffff;
+      --radius:      6px;
+      --shadow:      0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.04);
+      --shadow-md:   0 4px 12px rgba(0,0,0,.12);
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      background: var(--gray-50);
+      color: var(--gray-800);
+      font-size: 13px;
+      line-height: 1.5;
+      min-height: 100vh;
+    }
+
+    /* ─── TOPBAR ─── */
+    #topbar {
+      background: var(--navy);
+      color: #fff;
+      height: 54px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 0 24px;
+      position: sticky;
+      top: 0;
+      z-index: 200;
+      box-shadow: 0 1px 0 rgba(255,255,255,.07);
+    }
+    .brand { font-size: 15px; font-weight: 700; letter-spacing: -.3px; }
+    .brand em { color: #60a5fa; font-style: normal; }
+    .vr { width: 1px; height: 20px; background: rgba(255,255,255,.15); }
+    .tagline { font-size: 11px; color: rgba(255,255,255,.5); text-transform: uppercase; letter-spacing: .6px; }
+    #clock { margin-left: auto; font-size: 12px; color: rgba(255,255,255,.6); font-variant-numeric: tabular-nums; }
+
+    .status-pill {
+      display: flex; align-items: center; gap: 6px;
+      padding: 4px 11px; border-radius: 20px;
+      background: rgba(255,255,255,.08);
+      font-size: 12px; color: rgba(255,255,255,.8);
+    }
+    .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--gray-400); }
+    .dot.up   { background: #4ade80; box-shadow: 0 0 0 3px rgba(74,222,128,.25); }
+    .dot.down { background: #f87171; }
+
+    #topbar-btn {
+      display: flex; align-items: center; gap: 5px;
+      background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.12);
+      color: #fff; padding: 5px 12px; border-radius: var(--radius);
+      cursor: pointer; font-size: 12px;
+    }
+    #topbar-btn:hover { background: rgba(255,255,255,.15); }
+
+    /* ─── LAYOUT ─── */
+    main { padding: 20px 24px; display: flex; flex-direction: column; gap: 20px; max-width: 1800px; margin: 0 auto; }
+
+    /* ─── SECTION ─── */
+    .card {
+      background: var(--white); border: 1px solid var(--gray-200);
+      border-radius: 10px; box-shadow: var(--shadow); overflow: hidden;
+    }
+    .card-header {
+      display: flex; align-items: center; gap: 10px;
+      padding: 13px 18px; border-bottom: 1px solid var(--gray-200);
+      background: var(--gray-50);
+    }
+    .card-title { font-size: 13px; font-weight: 600; color: var(--gray-800); }
+    .card-meta  { font-size: 11px; color: var(--gray-400); }
+    .card-actions { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+
+    /* ─── BUTTONS ─── */
+    .btn {
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 6px 13px; border-radius: var(--radius);
+      font-size: 12px; font-weight: 500; cursor: pointer;
+      border: 1px solid transparent; transition: all .12s;
+      white-space: nowrap; text-decoration: none;
+    }
+    .btn-primary  { background: var(--blue);  color: #fff; }
+    .btn-primary:hover  { background: #1d4ed8; }
+    .btn-success  { background: var(--green); color: #fff; }
+    .btn-success:hover  { background: #15803d; }
+    .btn-ghost    { background: var(--white); color: var(--gray-700); border-color: var(--gray-300); }
+    .btn-ghost:hover    { background: var(--gray-50); }
+    .btn-danger   { background: var(--white); color: var(--red); border-color: var(--gray-200); }
+    .btn-danger:hover   { background: var(--red-bg); border-color: var(--red); }
+    .btn:disabled { opacity: .45; cursor: not-allowed; pointer-events: none; }
+    .btn-xs { padding: 3px 8px; font-size: 11px; }
+
+    /* ─── TOOLBAR ─── */
+    .toolbar { display: flex; align-items: center; gap: 10px; padding: 11px 18px; border-bottom: 1px solid var(--gray-100); flex-wrap: wrap; }
+    .toolbar-label { font-size: 12px; color: var(--gray-500); display: flex; align-items: center; gap: 5px; }
+    .tinput {
+      padding: 5px 8px; border: 1px solid var(--gray-300);
+      border-radius: var(--radius); font-size: 12px;
+    }
+    .tinput:focus { outline: none; border-color: var(--blue); box-shadow: 0 0 0 2px rgba(37,99,235,.1); }
+    .tinput.w60  { width: 60px; }
+    .tinput.w80  { width: 80px; }
+    .tinput.w120 { width: 120px; }
+
+    /* ─── TABLE ─── */
+    .tscroll { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    thead th {
+      padding: 9px 11px; background: var(--gray-50);
+      text-align: left; font-size: 10px; font-weight: 700;
+      color: var(--gray-400); text-transform: uppercase; letter-spacing: .5px;
+      border-bottom: 1px solid var(--gray-200); white-space: nowrap;
+    }
+    tbody tr { border-bottom: 1px solid var(--gray-100); transition: background .1s; }
+    tbody tr:last-child { border-bottom: none; }
+    tbody tr:hover { background: var(--gray-50); }
+    td { padding: 9px 11px; vertical-align: middle; }
+
+    /* row status left-border */
+    tr.s-active   { border-left: 3px solid var(--green); }
+    tr.s-expiring { border-left: 3px solid var(--amber); }
+    tr.s-expired  { border-left: 3px solid var(--red);   opacity: .7; }
+    tr.s-pending  { border-left: 3px solid var(--gray-300); }
+
+    /* inline inputs */
+    .tin {
+      width: 100%; padding: 5px 7px; border: 1px solid var(--gray-200);
+      border-radius: var(--radius); font-size: 12px; background: #fff;
+    }
+    .tin:focus { outline: none; border-color: var(--blue); box-shadow: 0 0 0 2px rgba(37,99,235,.08); }
+    .tin.rate   { width: 100px; text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
+    .tin.margin { width: 65px; text-align: right; }
+    .final-val  { font-weight: 700; color: var(--blue); font-size: 13px; font-variant-numeric: tabular-nums; }
+
+    /* badges */
+    .badge {
+      display: inline-flex; align-items: center; gap: 3px;
+      padding: 2px 7px; border-radius: 12px; font-size: 10px;
+      font-weight: 700; text-transform: uppercase; letter-spacing: .3px;
+      white-space: nowrap;
+    }
+    .b-pending  { background: var(--gray-100); color: var(--gray-500); }
+    .b-active   { background: var(--green-bg); color: var(--green); }
+    .b-expiring { background: var(--amber-bg); color: var(--amber); }
+    .b-expired  { background: var(--red-bg);   color: var(--red); }
+    .b-live     { background: var(--blue-bg);  color: var(--blue); }
+    .b-saved    { background: #f0fdf4; color: #15803d; }
+
+    /* countdown */
+    .cd { font-variant-numeric: tabular-nums; font-weight: 600; }
+    .cd.exp  { color: var(--amber); }
+    .cd.done { color: var(--red); }
+
+    /* evidence cell */
+    .ev-wrap { display: flex; align-items: center; gap: 5px; }
+    .ev-thumb { width: 30px; height: 30px; border-radius: 4px; object-fit: cover; border: 1px solid var(--gray-200); cursor: pointer; }
+    .ev-name  { font-size: 10px; color: var(--gray-400); max-width: 70px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    /* row action cluster */
+    .ra { display: flex; flex-direction: column; gap: 4px; }
+    .ra-row { display: flex; gap: 3px; }
+    .ra-badges { display: flex; gap: 3px; flex-wrap: wrap; }
+
+    /* ─── PREVIEW GRID ─── */
+    .preview-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 14px; padding: 18px; }
+    .pcard {
+      background: var(--gray-50); border: 1px solid var(--gray-200);
+      border-radius: 10px; padding: 15px;
+    }
+    .pcard-pair   { font-size: 11px; color: var(--gray-400); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 4px; }
+    .pcard-rate   { font-size: 20px; font-weight: 700; color: var(--gray-800); margin-bottom: 10px; }
+    .pcard-detail { display: flex; justify-content: space-between; font-size: 11px; color: var(--gray-500); padding: 4px 0; border-top: 1px solid var(--gray-200); }
+    .pcard-timer  { text-align: center; padding: 7px; border-radius: var(--radius); margin-top: 10px; font-size: 12px; font-weight: 600; }
+    .pcard-timer.active   { background: var(--green-bg); color: var(--green); }
+    .pcard-timer.expiring { background: var(--amber-bg); color: var(--amber); }
+    .pcard-timer.expired  { background: var(--red-bg);   color: var(--red); }
+
+    /* ─── PAGINATION ─── */
+    .pager { display: flex; align-items: center; justify-content: space-between; padding: 11px 18px; border-top: 1px solid var(--gray-100); font-size: 11px; color: var(--gray-400); }
+    .pager-btns { display: flex; gap: 6px; }
+
+    /* ─── MODAL ─── */
+    .overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,.5);
+      z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 20px;
+    }
+    .mbox { background: #fff; border-radius: 12px; box-shadow: var(--shadow-md); width: 100%; max-width: 460px; overflow: hidden; }
+    .mbox.wide { max-width: 680px; }
+    .m-head { display: flex; align-items: center; justify-content: space-between; padding: 18px 22px 14px; border-bottom: 1px solid var(--gray-200); }
+    .m-title { font-size: 15px; font-weight: 600; }
+    .m-close { background: none; border: none; font-size: 18px; cursor: pointer; color: var(--gray-400); line-height: 1; }
+    .m-close:hover { color: var(--gray-700); }
+    .m-body { padding: 18px 22px; }
+    .m-foot { padding: 14px 22px; border-top: 1px solid var(--gray-200); display: flex; justify-content: flex-end; gap: 8px; }
+
+    .fg { margin-bottom: 14px; }
+    .fl { display: block; font-size: 11px; font-weight: 700; color: var(--gray-700); margin-bottom: 5px; text-transform: uppercase; letter-spacing: .3px; }
+    .fi { width: 100%; padding: 8px 11px; border: 1px solid var(--gray-300); border-radius: var(--radius); font-size: 13px; }
+    .fi:focus { outline: none; border-color: var(--blue); box-shadow: 0 0 0 3px rgba(37,99,235,.1); }
+    .fhint { font-size: 10px; color: var(--gray-400); margin-top: 4px; }
+
+    .info-box {
+      background: var(--blue-bg); border: 1px solid #bfdbfe;
+      border-radius: var(--radius); padding: 9px 13px;
+      font-size: 12px; color: #1e40af; margin-bottom: 14px;
+    }
+
+    /* ─── TOAST ─── */
+    #toasts { position: fixed; bottom: 22px; right: 22px; z-index: 2000; display: flex; flex-direction: column; gap: 7px; pointer-events: none; }
+    .toast {
+      padding: 10px 15px; border-radius: 8px; font-size: 12px; font-weight: 500;
+      box-shadow: var(--shadow-md); display: flex; align-items: center; gap: 8px;
+      pointer-events: auto; max-width: 320px; animation: slideIn .18s ease;
+    }
+    .t-success { background: var(--green); color: #fff; }
+    .t-error   { background: var(--red);   color: #fff; }
+    .t-warning { background: var(--amber); color: #fff; }
+    .t-info    { background: var(--navy);  color: #fff; }
+    @keyframes slideIn { from { transform: translateX(110%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+    /* ─── SPINNER ─── */
+    .spin { display: inline-block; width: 13px; height: 13px; border: 2px solid rgba(255,255,255,.3); border-top-color: #fff; border-radius: 50%; animation: rotate .7s linear infinite; }
+    @keyframes rotate { to { transform: rotate(360deg); } }
+
+    /* ─── EMPTY STATE ─── */
+    .empty { text-align: center; padding: 40px 20px; color: var(--gray-400); }
+    .empty .ico { font-size: 28px; margin-bottom: 10px; }
+    .empty p { font-size: 12px; }
+
+    .hidden { display: none !important; }
+
+    /* code chip */
+    code { background: var(--gray-100); padding: 1px 5px; border-radius: 4px; font-size: 11px; font-family: monospace; }
+  </style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════ TOPBAR ═══════════════════════════════ -->
+<header id="topbar">
+  <span class="brand">GFC<em>Exchange</em></span>
+  <span class="vr"></span>
+  <span class="tagline">Internal Operations</span>
+  <span id="clock">—</span>
+  <div class="status-pill">
+    <span class="dot" id="dot"></span>
+    <span id="status-txt">Connecting…</span>
+  </div>
+  <button id="topbar-btn" onclick="openSettings()">⚙ Settings</button>
+</header>
+
+<main>
+
+<!-- ═══════════════════════════════ RATE GRID ══════════════════════════════ -->
+<div class="card" id="grid-card">
+  <div class="card-header">
+    <span class="card-title">📋 Provider Rate Grid</span>
+    <span class="card-meta">Enter BDC provider quotes, apply margin and push to the live feed</span>
+    <div class="card-actions">
+      <button class="btn btn-ghost" onclick="refreshRatesFromCache()">↻ Load Cache</button>
+      <button class="btn btn-primary" onclick="addRow()">+ Add Provider</button>
+    </div>
+  </div>
+
+  <div class="toolbar">
+    <span class="toolbar-label">
+      Default Margin:
+      <input id="global-margin" class="tinput w60" type="number" value="0" min="0" step="0.01"> %
+    </span>
+    <button class="btn btn-ghost" onclick="applyGlobalMargin()">Apply to All</button>
+    <span class="toolbar-label" style="margin-left:auto">
+      Default Expiry:
+      <input id="global-expiry" class="tinput w80" type="number" value="1800" min="60"> s
+    </span>
+  </div>
+
+  <div class="tscroll">
+    <table id="rate-table">
+      <thead>
+        <tr>
+          <th>Provider</th>
+          <th>Pair</th>
+          <th>Sender Country</th>
+          <th>Raw Rate</th>
+          <th>Received</th>
+          <th>Countdown</th>
+          <th>Expiry (s)</th>
+          <th>Margin %</th>
+          <th style="color:var(--blue)">Final Rate</th>
+          <th>Status</th>
+          <th>Evidence</th>
+          <th>Notes</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="rate-body"></tbody>
+    </table>
+  </div>
+
+  <div style="padding:10px 18px;border-top:1px solid var(--gray-100)">
+    <button class="btn btn-ghost" style="font-size:11px" onclick="addRow()">+ Add Provider Row</button>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════ PREVIEW ════════════════════════════════ -->
+<div class="card">
+  <div class="card-header">
+    <span class="card-title">👁 Customer Rate Preview</span>
+    <span class="card-meta">Live read from /api/v1/exchange-rate — reflects rates currently in Redis cache</span>
+    <div class="card-actions">
+      <button class="btn btn-ghost" onclick="refreshPreviews()">↻ Refresh</button>
+    </div>
+  </div>
+  <div id="preview-area">
+    <div class="empty"><div class="ico">📡</div><p>Push a rate to the live feed — then refresh to see what customers see.</p></div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════ SAVED QUOTES ═══════════════════════════ -->
+<div class="card">
+  <div class="card-header">
+    <span class="card-title">💾 Saved Quotes</span>
+    <span class="card-meta">Quotes persisted to PostgreSQL via POST /api/v1/quotes</span>
+    <div class="card-actions">
+      <button class="btn btn-ghost" onclick="loadQuotes()">↻ Refresh</button>
+    </div>
+  </div>
+  <div class="tscroll">
+    <table id="quotes-table">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Provider</th>
+          <th>Pair</th>
+          <th>Country</th>
+          <th>Base Rate</th>
+          <th>Margin</th>
+          <th>Final Rate</th>
+          <th>Fee</th>
+          <th>Expiry</th>
+          <th>Generated</th>
+          <th>Notes</th>
+          <th>Evidence</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="quotes-body">
+        <tr><td colspan="13"><div class="empty"><div class="ico">⏳</div><p>Loading…</p></div></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="pager">
+    <span id="pager-info">—</span>
+    <div class="pager-btns">
+      <button class="btn btn-ghost btn-xs" id="prev-btn" onclick="prevPage()">← Prev</button>
+      <button class="btn btn-ghost btn-xs" id="next-btn" onclick="nextPage()">Next →</button>
+    </div>
+  </div>
+</div>
+
+</main>
+
+<!-- ═══════════════ SETTINGS MODAL ═══════════════ -->
+<div id="settings-modal" class="overlay hidden">
+  <div class="mbox">
+    <div class="m-head">
+      <span class="m-title">⚙ Settings</span>
+      <button class="m-close" onclick="closeSettings()">✕</button>
+    </div>
+    <div class="m-body">
+      <div class="info-box">ℹ Credentials are stored in your browser's localStorage and sent only to this internal service.</div>
+      <div class="fg">
+        <label class="fl">Internal API Key (X-API-Key header)</label>
+        <input id="s-apikey" class="fi" type="password" placeholder="your-internal-api-key">
+        <div class="fhint">Required to push rates via POST /internal/v1/rates and PUT /internal/v1/rates/:pair</div>
+      </div>
+      <div class="fg">
+        <label class="fl">Bearer Token (fallback)</label>
+        <input id="s-bearer" class="fi" type="password" placeholder="your-bearer-token">
+        <div class="fhint">Used if API key is blank</div>
+      </div>
+    </div>
+    <div class="m-foot">
+      <button class="btn btn-ghost" onclick="closeSettings()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveSettings()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ EVIDENCE MODAL ═══════════════ -->
+<div id="ev-modal" class="overlay hidden" onclick="if(event.target===this)closeEv()">
+  <div class="mbox wide">
+    <div class="m-head">
+      <span class="m-title">📎 Evidence Preview</span>
+      <button class="m-close" onclick="closeEv()">✕</button>
+    </div>
+    <div class="m-body" style="text-align:center">
+      <img id="ev-img" src="" alt="Evidence" style="max-width:100%;max-height:65vh;object-fit:contain;border-radius:6px">
+      <div id="ev-filename" style="margin-top:8px;font-size:11px;color:var(--gray-400)"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ TOASTS ═══════════════ -->
+<div id="toasts"></div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════
+// CONSTANTS
+// ═══════════════════════════════════════════════════════════════
+const PAIRS = [
+  'NGN_CAD','NGN_USD','NGN_GBP',
+  'USD_NGN','GBP_NGN','CAD_NGN',
+  'USD_CAD','GBP_USD','USD_GBP','CAD_USD',
+];
+const CCY_COUNTRY = { NGN:'Nigeria', CAD:'Canada', USD:'United States', GBP:'United Kingdom' };
+
+// ═══════════════════════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════════════════════
+const S = {
+  rows: [],
+  quotes: [],
+  countries: ['Nigeria','Canada','United States','United Kingdom'],
+  apiKey: '',
+  bearerToken: '',
+  quotesOffset: 0,
+  quotesLimit: 20,
+};
+
+// ═══════════════════════════════════════════════════════════════
+// UTILITIES
+// ═══════════════════════════════════════════════════════════════
+const uid  = () => crypto.randomUUID();
+const esc  = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+const slug = s => s.toLowerCase().replace(/\s+/g,'-').replace(/[^a-z0-9-]/g,'');
+
+function pairParts(pair) {
+  const [from,to] = pair.split('_');
+  return {from,to};
+}
+function autoCountry(pair) {
+  return CCY_COUNTRY[pairParts(pair).from] || 'Nigeria';
+}
+function calcFinal(raw, margin) {
+  const r = parseFloat(raw);
+  const m = parseFloat(margin)||0;
+  if (!raw || isNaN(r)) return '';
+  return (r*(1+m/100)).toFixed(6);
+}
+function rowStatus(row) {
+  if (!row.receivedAt || !row.rawRate) return 'pending';
+  const rem = row.expirySeconds - (Date.now()-row.receivedAt)/1000;
+  if (rem<=0) return 'expired';
+  if (rem<900) return 'expiring';
+  return 'active';
+}
+function countdown(row) {
+  if (!row.receivedAt || !row.rawRate) return '--';
+  const rem = Math.max(0, row.expirySeconds - (Date.now()-row.receivedAt)/1000);
+  const m = Math.floor(rem/60), s = Math.floor(rem%60);
+  return `${m}:${String(s).padStart(2,'0')}`;
+}
+function fmtTime(ts)  { return ts ? new Date(ts).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'}) : '--'; }
+function fmtDT(str)   { return str ? new Date(str).toLocaleString([],{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '--'; }
+function fmtRate(v)   { return v ? parseFloat(v).toLocaleString(undefined,{minimumFractionDigits:4,maximumFractionDigits:6}) : '--'; }
+function statusLabel(s){ return {pending:'Pending',active:'Active',expiring:'Expiring',expired:'Expired'}[s]||s; }
+
+// ═══════════════════════════════════════════════════════════════
+// API
+// ═══════════════════════════════════════════════════════════════
+async function api(method, path, body=null, headers={}) {
+  const opts = { method, headers:{...headers} };
+  if (body && !(body instanceof FormData)) {
+    opts.headers['Content-Type']='application/json';
+    opts.body=JSON.stringify(body);
+  } else if (body) {
+    opts.body=body;
+  }
+  return fetch(path, opts);
+}
+
+async function healthCheck() {
+  try { const r=await fetch('/health'); return r.ok; } catch { return false; }
+}
+async function getRates() {
+  const r=await fetch('/api/v1/rates'); const d=await r.json(); return d.data||[];
+}
+async function getCountries() {
+  const r=await fetch('/api/v1/supported-countries'); const d=await r.json(); return d.data?.countries||S.countries;
+}
+async function getExchangeRate(from, to, country) {
+  const p=new URLSearchParams({from,to,sender_country:country});
+  const r=await fetch(`/api/v1/exchange-rate?${p}`); return r.json();
+}
+async function getQuotes(limit, offset) {
+  const r=await fetch(`/api/v1/quotes?limit=${limit}&offset=${offset}`); return r.json();
+}
+async function createQuote(fd) {
+  const r=await fetch('/api/v1/quotes',{method:'POST',body:fd}); return r.json();
+}
+async function deleteQuoteAPI(id) {
+  const r=await fetch(`/api/v1/quotes/${id}`,{method:'DELETE'}); return r.ok;
+}
+async function pushRateAPI(row) {
+  const h = {};
+  if (S.apiKey)      h['X-API-Key']     = S.apiKey;
+  else if (S.bearerToken) h['Authorization'] = `Bearer ${S.bearerToken}`;
+  const r = await fetch('/internal/v1/rates', {
+    method:'POST',
+    headers:{'Content-Type':'application/json',...h},
+    body: JSON.stringify({
+      event_id: uid(),
+      provider_id: row.providerId || 'manual',
+      pair: row.pair,
+      rate: parseFloat(row.finalRate),
+      timestamp: new Date().toISOString(),
+    }),
+  });
+  return r.status===202;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TOAST
+// ═══════════════════════════════════════════════════════════════
+function toast(msg, type='info', ms=4200) {
+  const el = document.createElement('div');
+  const icon = {success:'✓',error:'✕',warning:'⚠',info:'ℹ'}[type]||'ℹ';
+  el.className=`toast t-${type}`;
+  el.innerHTML=`<span>${icon}</span><span>${msg}</span>`;
+  document.getElementById('toasts').appendChild(el);
+  setTimeout(()=>el.remove(), ms);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// SETTINGS
+// ═══════════════════════════════════════════════════════════════
+function loadSettings() {
+  S.apiKey      = localStorage.getItem('gfc_key')||'';
+  S.bearerToken = localStorage.getItem('gfc_bearer')||'';
+}
+function openSettings() {
+  document.getElementById('s-apikey').value  = S.apiKey;
+  document.getElementById('s-bearer').value  = S.bearerToken;
+  document.getElementById('settings-modal').classList.remove('hidden');
+}
+function closeSettings() { document.getElementById('settings-modal').classList.add('hidden'); }
+function saveSettings() {
+  S.apiKey      = document.getElementById('s-apikey').value.trim();
+  S.bearerToken = document.getElementById('s-bearer').value.trim();
+  localStorage.setItem('gfc_key',    S.apiKey);
+  localStorage.setItem('gfc_bearer', S.bearerToken);
+  closeSettings();
+  toast('Settings saved','success');
+}
+
+// ═══════════════════════════════════════════════════════════════
+// RATE GRID — ROW MANAGEMENT
+// ═══════════════════════════════════════════════════════════════
+function addRow(data={}) {
+  const pair = data.pair||'NGN_CAD';
+  const defaultExpiry = parseInt(document.getElementById('global-expiry').value)||1800;
+  const row = {
+    id: uid(),
+    provider:     data.provider    || '',
+    providerId:   data.providerId  || '',
+    pair,
+    senderCountry: data.senderCountry || autoCountry(pair),
+    rawRate:       data.rawRate    || '',
+    margin:        data.margin     || document.getElementById('global-margin').value || '0',
+    finalRate:     '',
+    expirySeconds: data.expirySeconds || defaultExpiry,
+    receivedAt:    data.receivedAt || null,
+    evidenceFile:  null,
+    evidencePreview: '',
+    notes:         data.notes      || '',
+    pushed:        false,
+    savedId:       null,
+  };
+  if (row.rawRate) row.finalRate = calcFinal(row.rawRate, row.margin);
+  S.rows.push(row);
+  appendRowToTable(row);
+}
+
+function appendRowToTable(row) {
+  const tbody = document.getElementById('rate-body');
+  const tr = document.createElement('tr');
+  tr.id = `r-${row.id}`;
+  tr.className = `s-${rowStatus(row)}`;
+  tr.innerHTML = buildRowHTML(row);
+  tbody.appendChild(tr);
+}
+
+function buildRowHTML(row) {
+  const pairOpts = PAIRS.map(p=>{
+    const {from,to}=pairParts(p);
+    return `<option value="${p}"${p===row.pair?' selected':''}>${from} → ${to}</option>`;
+  }).join('');
+
+  const ctryOpts = S.countries.map(c=>
+    `<option value="${c}"${c===row.senderCountry?' selected':''}>${c}</option>`
+  ).join('');
+
+  const st  = rowStatus(row);
+  const cd  = countdown(row);
+  const cdClass = {expiring:'exp',expired:'done'}[st]||'';
+
+  const evCell = row.evidencePreview
+    ? `<div class="ev-wrap">
+         <img class="ev-thumb" src="${row.evidencePreview}" onclick="openEv('${row.id}')" title="Preview">
+         <span class="ev-name">${esc(row.evidenceFile?.name||'file')}</span>
+         <button class="btn btn-ghost btn-xs" onclick="clearEv('${row.id}')">✕</button>
+       </div>`
+    : `<label class="btn btn-ghost btn-xs" style="cursor:pointer">
+         📎 Upload
+         <input type="file" accept="image/*,application/pdf" style="display:none" onchange="onEvFile('${row.id}',this)">
+       </label>`;
+
+  return `
+    <td>
+      <input class="tin" style="width:115px" placeholder="BDC Alpha" value="${esc(row.provider)}"
+        onchange="upd('${row.id}','provider',this.value)">
+      <div style="font-size:10px;color:var(--gray-400)" id="pid-${row.id}">${row.providerId?'id:'+row.providerId:''}</div>
+    </td>
+    <td>
+      <select class="tin" style="width:110px" onchange="upd('${row.id}','pair',this.value)">${pairOpts}</select>
+    </td>
+    <td>
+      <select class="tin" style="width:135px" onchange="upd('${row.id}','senderCountry',this.value)">${ctryOpts}</select>
+    </td>
+    <td>
+      <input type="number" class="tin rate" placeholder="0.00" value="${esc(row.rawRate)}" step="any" min="0"
+        onchange="upd('${row.id}','rawRate',this.value)">
+    </td>
+    <td style="color:var(--gray-400);white-space:nowrap" id="rcvd-${row.id}">${fmtTime(row.receivedAt)}</td>
+    <td><span class="cd ${cdClass}" id="cd-${row.id}">${cd}</span></td>
+    <td>
+      <input type="number" class="tin" style="width:72px" value="${row.expirySeconds}" min="60"
+        onchange="upd('${row.id}','expirySeconds',+this.value)">
+    </td>
+    <td>
+      <input type="number" class="tin margin" value="${esc(row.margin)}" step="0.01" min="0"
+        onchange="upd('${row.id}','margin',this.value)">
+    </td>
+    <td><span class="final-val" id="fin-${row.id}">${row.finalRate ? fmtRate(row.finalRate) : '--'}</span></td>
+    <td><span class="badge b-${st}" id="st-${row.id}">${statusLabel(st)}</span></td>
+    <td id="ev-${row.id}">${evCell}</td>
+    <td>
+      <input class="tin" style="width:150px" placeholder="Notes…" value="${esc(row.notes)}"
+        onchange="upd('${row.id}','notes',this.value)">
+    </td>
+    <td>
+      <div class="ra">
+        <div class="ra-row">
+          <button class="btn btn-ghost btn-xs" onclick="handlePush('${row.id}')" title="Push final rate to live feed (requires API key)">↑ Push</button>
+          <button class="btn btn-success btn-xs" onclick="handleSave('${row.id}')" title="Save quote to database">💾 Save</button>
+          <button class="btn btn-danger btn-xs" onclick="removeRow('${row.id}')">✕</button>
+        </div>
+        <div class="ra-badges" id="badges-${row.id}">
+          ${row.pushed  ? '<span class="badge b-live">↑ Live</span>'  : ''}
+          ${row.savedId ? '<span class="badge b-saved">💾 Saved</span>':''}
+        </div>
+      </div>
+    </td>`;
+}
+
+function rebuildRow(id) {
+  const row = S.rows.find(r=>r.id===id);
+  if (!row) return;
+  const tr = document.getElementById(`r-${id}`);
+  if (!tr) return;
+  tr.className = `s-${rowStatus(row)}`;
+  tr.innerHTML = buildRowHTML(row);
+}
+
+function removeRow(id) {
+  S.rows = S.rows.filter(r=>r.id!==id);
+  document.getElementById(`r-${id}`)?.remove();
+}
+
+function upd(id, field, val) {
+  const row = S.rows.find(r=>r.id===id);
+  if (!row) return;
+  row[field] = val;
+
+  if (field==='provider') {
+    row.providerId = slug(val);
+    const h = document.getElementById(`pid-${id}`);
+    if (h) h.textContent = row.providerId ? 'id:'+row.providerId : '';
+  }
+
+  if (field==='pair') {
+    row.senderCountry = autoCountry(val);
+    rebuildRow(id); // rebuild to update selects
+    return;
+  }
+
+  if (field==='rawRate' && val && !isNaN(val)) {
+    if (!row.receivedAt) {
+      row.receivedAt = Date.now();
+      const el = document.getElementById(`rcvd-${id}`);
+      if (el) el.textContent = fmtTime(row.receivedAt);
+    }
+  }
+
+  if (field==='rawRate'||field==='margin') {
+    row.finalRate = calcFinal(row.rawRate, row.margin);
+    const el = document.getElementById(`fin-${id}`);
+    if (el) el.textContent = row.finalRate ? fmtRate(row.finalRate) : '--';
+  }
+
+  tickRowStatus(id);
+}
+
+function tickRowStatus(id) {
+  const row = S.rows.find(r=>r.id===id);
+  if (!row) return;
+  const st = rowStatus(row);
+  const tr = document.getElementById(`r-${id}`);
+  if (tr) tr.className = `s-${st}`;
+  const sb = document.getElementById(`st-${id}`);
+  if (sb) { sb.className=`badge b-${st}`; sb.textContent=statusLabel(st); }
+}
+
+// ─── EVIDENCE ───
+function onEvFile(id, input) {
+  const row = S.rows.find(r=>r.id===id);
+  if (!row||!input.files[0]) return;
+  const file = input.files[0];
+  row.evidenceFile = file;
+  const reader = new FileReader();
+  reader.onload = e => {
+    row.evidencePreview = e.target.result;
+    const cell = document.getElementById(`ev-${id}`);
+    if (cell) cell.innerHTML = `<div class="ev-wrap">
+      <img class="ev-thumb" src="${e.target.result}" onclick="openEv('${id}')" title="Preview">
+      <span class="ev-name">${esc(file.name)}</span>
+      <button class="btn btn-ghost btn-xs" onclick="clearEv('${id}')">✕</button>
+    </div>`;
+    toast('Evidence ready — will be uploaded when saving quote','success');
+  };
+  reader.readAsDataURL(file);
+}
+
+function clearEv(id) {
+  const row = S.rows.find(r=>r.id===id);
+  if (!row) return;
+  row.evidenceFile = null; row.evidencePreview = '';
+  const cell = document.getElementById(`ev-${id}`);
+  if (cell) cell.innerHTML = `<label class="btn btn-ghost btn-xs" style="cursor:pointer">
+    📎 Upload
+    <input type="file" accept="image/*,application/pdf" style="display:none" onchange="onEvFile('${id}',this)">
+  </label>`;
+}
+
+function openEv(id) {
+  const row = S.rows.find(r=>r.id===id);
+  if (!row?.evidencePreview) return;
+  document.getElementById('ev-img').src = row.evidencePreview;
+  document.getElementById('ev-filename').textContent = row.evidenceFile?.name||'';
+  document.getElementById('ev-modal').classList.remove('hidden');
+}
+function closeEv() { document.getElementById('ev-modal').classList.add('hidden'); }
+
+// ─── GLOBAL MARGIN ───
+function applyGlobalMargin() {
+  const m = document.getElementById('global-margin').value;
+  S.rows.forEach(row=>{
+    row.margin = m;
+    row.finalRate = calcFinal(row.rawRate, m);
+    const el = document.getElementById(`fin-${row.id}`);
+    if (el) el.textContent = row.finalRate ? fmtRate(row.finalRate) : '--';
+    const inp = document.querySelector(`#r-${row.id} .margin`);
+    if (inp) inp.value = m;
+  });
+  toast(`Margin set to ${m}% on all rows`,'info');
+}
+
+// ─── LOAD RATES FROM CACHE ───
+async function refreshRatesFromCache() {
+  try {
+    const rates = await getRates();
+    if (!rates.length) { toast('No rates in cache — push some rates first','warning'); return; }
+    const pairs = rates.map(r=>r.pair).join(', ');
+    toast(`Cache has ${rates.length} rate(s): ${pairs}`,'info');
+  } catch(e) { toast('Failed: '+e.message,'error'); }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PUSH TO FEED
+// ═══════════════════════════════════════════════════════════════
+async function handlePush(id) {
+  const row = S.rows.find(r=>r.id===id);
+  if (!row) return;
+
+  if (!row.finalRate||isNaN(row.finalRate)) { toast('Enter a raw rate first','warning'); return; }
+  if (!S.apiKey&&!S.bearerToken)            { toast('No API key — open Settings first','warning'); openSettings(); return; }
+  if (rowStatus(row)==='expired')            { toast('This quote has expired — update the rate first','warning'); return; }
+
+  const pushBtn = document.querySelector(`#r-${id} button`);
+  if (pushBtn) { pushBtn.disabled=true; pushBtn.innerHTML='<span class="spin"></span>'; }
+
+  try {
+    const ok = await pushRateAPI(row);
+    if (ok) {
+      row.pushed = true;
+      toast(`Rate pushed: ${row.pair} @ ${fmtRate(row.finalRate)}`,'success');
+      rebuildRow(id);
+      setTimeout(refreshPreviews, 600);
+    } else {
+      toast('Push rejected — check your API key and that the rate is valid','error');
+    }
+  } catch(e) { toast('Network error: '+e.message,'error'); }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// SAVE QUOTE
+// ═══════════════════════════════════════════════════════════════
+async function handleSave(id) {
+  const row = S.rows.find(r=>r.id===id);
+  if (!row) return;
+
+  if (!row.rawRate||isNaN(row.rawRate))  { toast('Enter a raw rate before saving','warning'); return; }
+  if (!row.provider.trim())              { toast('Enter a provider name','warning'); return; }
+  if (!row.finalRate)                    { toast('Final rate missing','warning'); return; }
+
+  const {from, to} = pairParts(row.pair);
+  const fd = new FormData();
+  fd.append('exchange_from',       from);
+  fd.append('exchange_to',         to);
+  fd.append('sender_country',      row.senderCountry);
+  fd.append('base_rate',           parseFloat(row.rawRate).toFixed(6));
+  fd.append('markup_percentage',   parseFloat(row.margin||0).toFixed(6));
+  fd.append('final_rate',          parseFloat(row.finalRate).toFixed(6));
+  fd.append('fee_type',            'NONE');
+  fd.append('transaction_fee',     '0');
+  fd.append('quote_expiry_seconds', String(row.expirySeconds));
+  fd.append('provider_id',         row.providerId || slug(row.provider) || 'manual');
+  fd.append('selected_provider_id', row.providerId || slug(row.provider) || 'manual');
+  fd.append('generated_at',        new Date(row.receivedAt||Date.now()).toISOString());
+  if (row.notes)  fd.append('notes', row.notes);
+
+  const prates = [{provider_id: row.providerId||'manual', rate: String(row.rawRate)}];
+  fd.append('provider_rates', JSON.stringify(prates));
+
+  if (row.evidenceFile) fd.append('evidence_file', row.evidenceFile);
+
+  // disable all buttons in row
+  const btns = document.querySelectorAll(`#r-${id} button`);
+  btns.forEach(b=>b.disabled=true);
+
+  try {
+    const data = await createQuote(fd);
+    if (data.success) {
+      row.savedId = data.data?.id;
+      toast('Quote saved!','success');
+      rebuildRow(id);
+      loadQuotes();
+    } else {
+      const msg = data.error?.message||JSON.stringify(data.error)||'Unknown error';
+      toast('Save failed: '+msg,'error');
+    }
+  } catch(e) { toast('Error: '+e.message,'error'); }
+  finally    { btns.forEach(b=>b.disabled=false); }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// CUSTOMER PREVIEW
+// ═══════════════════════════════════════════════════════════════
+async function refreshPreviews() {
+  const active = [...new Map(
+    S.rows
+      .filter(r=>r.finalRate&&rowStatus(r)!=='expired')
+      .map(r=>[r.pair, r])
+  ).values()].slice(0,6);
+
+  if (!active.length) {
+    document.getElementById('preview-area').innerHTML =
+      '<div class="empty"><div class="ico">📡</div><p>No active rates to preview. Push a rate to the live feed, then refresh.</p></div>';
+    return;
+  }
+
+  const cards = await Promise.all(active.map(async row=>{
+    const {from,to}=pairParts(row.pair);
+    try {
+      const d = await getExchangeRate(from, to, row.senderCountry);
+      if (!d.success) return '';
+      const q = d.data;
+      const st = rowStatus(row);
+      return `
+        <div class="pcard">
+          <div class="pcard-pair">${from} → ${to} · ${esc(row.senderCountry)}</div>
+          <div class="pcard-rate">1 ${from} = <strong>${fmtRate(q.final_rate)}</strong> ${to}</div>
+          <div class="pcard-detail"><span>Base rate</span><span>${fmtRate(q.base_rate)}</span></div>
+          <div class="pcard-detail"><span>Markup</span><span>${parseFloat(q.markup_percentage).toFixed(2)}%</span></div>
+          <div class="pcard-detail"><span>Fee</span><span>${q.fee_type==='NONE'?'None':fmtRate(q.transaction_fee)+' '+to}</span></div>
+          <div class="pcard-detail"><span>Provider</span><span>${esc(row.provider||row.providerId||'—')}</span></div>
+          <div class="pcard-timer ${st}" id="pt-${row.id}">
+            ⏱ ${st==='expired'?'Expired':`Expires in ${countdown(row)}`}
+          </div>
+        </div>`;
+    } catch { return ''; }
+  }));
+
+  const html = cards.filter(Boolean).join('');
+  document.getElementById('preview-area').innerHTML = html
+    ? `<div class="preview-grid">${html}</div>`
+    : '<div class="empty"><div class="ico">📡</div><p>No rates found in cache yet.</p></div>';
+}
+
+// ═══════════════════════════════════════════════════════════════
+// SAVED QUOTES
+// ═══════════════════════════════════════════════════════════════
+async function loadQuotes() {
+  const tbody = document.getElementById('quotes-body');
+  tbody.innerHTML = '<tr><td colspan="13"><div class="empty"><div class="ico">⏳</div><p>Loading…</p></div></td></tr>';
+  try {
+    const d = await getQuotes(S.quotesLimit, S.quotesOffset);
+    S.quotes = d.data||[];
+    renderQuotes(d.meta);
+  } catch(e) {
+    tbody.innerHTML = `<tr><td colspan="13"><div class="empty"><div class="ico">❌</div><p>${esc(e.message)}</p></div></td></tr>`;
+  }
+}
+
+function renderQuotes(meta) {
+  const tbody = document.getElementById('quotes-body');
+  if (!S.quotes.length) {
+    tbody.innerHTML = '<tr><td colspan="13"><div class="empty"><div class="ico">📭</div><p>No saved quotes yet.</p></div></td></tr>';
+  } else {
+    tbody.innerHTML = S.quotes.map(q=>{
+      const shortId = q.id?.substring(0,8)||'—';
+      const evLink = q.evidence_url
+        ? `<a href="${esc(q.evidence_url)}" target="_blank" rel="noopener" class="btn btn-ghost btn-xs">📎 View</a>`
+        : '<span style="color:var(--gray-300)">—</span>';
+      return `<tr>
+        <td><code title="${esc(q.id)}">${shortId}…</code></td>
+        <td>${esc(q.provider_id||'—')}</td>
+        <td style="font-weight:600">${esc(q.exchange_from||'')} → ${esc(q.exchange_to||'')}</td>
+        <td>${esc(q.sender_country||'—')}</td>
+        <td style="font-variant-numeric:tabular-nums">${fmtRate(q.base_rate)}</td>
+        <td>${parseFloat(q.markup_percentage||0).toFixed(2)}%</td>
+        <td style="font-weight:700;color:var(--blue);font-variant-numeric:tabular-nums">${fmtRate(q.final_rate)}</td>
+        <td>${esc(q.fee_type||'—')}</td>
+        <td style="font-size:11px">${fmtDT(q.quote_expires_at)}</td>
+        <td style="font-size:11px">${fmtDT(q.generated_at)}</td>
+        <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(q.notes)}">${esc(q.notes||'—')}</td>
+        <td>${evLink}</td>
+        <td><button class="btn btn-danger btn-xs" onclick="delQuote('${esc(q.id)}')">🗑 Delete</button></td>
+      </tr>`;
+    }).join('');
+  }
+
+  const {limit=20, offset=0} = meta||{};
+  const n = S.quotes.length;
+  document.getElementById('pager-info').textContent =
+    n===0 ? 'No results' : `Showing ${offset+1}–${offset+n}`;
+  document.getElementById('prev-btn').disabled = offset===0;
+  document.getElementById('next-btn').disabled = n<limit;
+}
+
+function prevPage() { S.quotesOffset=Math.max(0,S.quotesOffset-S.quotesLimit); loadQuotes(); }
+function nextPage() { S.quotesOffset+=S.quotesLimit; loadQuotes(); }
+
+async function delQuote(id) {
+  if (!confirm('Delete this saved quote? This cannot be undone.')) return;
+  try {
+    const ok = await deleteQuoteAPI(id);
+    if (ok) { toast('Quote deleted','success'); loadQuotes(); }
+    else      toast('Delete failed — quote may not exist','error');
+  } catch(e) { toast('Error: '+e.message,'error'); }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// CLOCK & COUNTDOWN TICK
+// ═══════════════════════════════════════════════════════════════
+function startTicker() {
+  setInterval(()=>{
+    // live clock
+    document.getElementById('clock').textContent =
+      new Date().toLocaleString([],{weekday:'short',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit'});
+
+    // per-row countdown
+    S.rows.forEach(row=>{
+      const cd = countdown(row);
+      const st = rowStatus(row);
+      const el = document.getElementById(`cd-${row.id}`);
+      if (el) {
+        el.textContent = cd;
+        el.className = `cd ${st==='expiring'?'exp':st==='expired'?'done':''}`;
+      }
+      tickRowStatus(row.id);
+
+      // update preview timer if visible
+      const pt = document.getElementById(`pt-${row.id}`);
+      if (pt) {
+        pt.className=`pcard-timer ${st}`;
+        pt.textContent=`⏱ ${st==='expired'?'Expired':'Expires in '+cd}`;
+      }
+    });
+  }, 1000);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// HEALTH POLL
+// ═══════════════════════════════════════════════════════════════
+async function pollHealth() {
+  const ok = await healthCheck();
+  document.getElementById('dot').className  = `dot ${ok?'up':'down'}`;
+  document.getElementById('status-txt').textContent = ok ? 'API Live' : 'API Down';
+  if (!ok) toast('Cannot reach the API — check docker-compose logs','error');
+}
+
+// ═══════════════════════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════════════════════
+async function init() {
+  loadSettings();
+  startTicker();
+
+  if (!S.apiKey&&!S.bearerToken) {
+    setTimeout(()=>{ openSettings(); toast('Set your Internal API Key to enable Push to Feed','info',6000); }, 800);
+  }
+
+  try {
+    const c = await getCountries();
+    if (c.length) S.countries = c;
+  } catch {}
+
+  await pollHealth();
+  setInterval(pollHealth, 30000);
+
+  // seed 3 default rows
+  addRow({pair:'NGN_CAD'});
+  addRow({pair:'NGN_USD'});
+  addRow({pair:'NGN_GBP'});
+
+  await loadQuotes();
+}
+
+document.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>

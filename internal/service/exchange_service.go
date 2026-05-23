@@ -4,6 +4,8 @@ import (
 	"context"
 	"time"
 
+	stderrors "errors"
+
 	"github.com/gfc-app-finance/greencard-mobile/exchange/internal/domain"
 	"github.com/gfc-app-finance/greencard-mobile/exchange/internal/errors"
 	"github.com/gfc-app-finance/greencard-mobile/exchange/internal/rates"
@@ -35,7 +37,7 @@ func (s *exchangeService) GetQuote(ctx context.Context, req QuoteRequest) (*Quot
 	pair := rates.NormalizePair(req.From) + "_" + rates.NormalizePair(req.To)
 	latest, err := s.rateService.GetLatest(ctx, pair)
 	if err != nil {
-		if err == rates.ErrRateNotFound {
+		if stderrors.Is(err, rates.ErrRateNotFound) {
 			return nil, errors.ErrUnsupportedPair
 		}
 		return nil, err
